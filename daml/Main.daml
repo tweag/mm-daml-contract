@@ -1,0 +1,60 @@
+module Main where
+
+import Daml.Script
+import Crowdfunding
+import qualified DA.Map as Map
+import DA.Date (addDays, toDateUTC)
+import DA.Foldable (forA_)
+import DA.List (head)
+import DA.Time (days)
+
+createProject: Party -> Text -> Date -> Int -> Script (ContractId CFProject)
+createProject owner name deadline threshold = 
+  submit owner $ createCmd CFProject with
+    owner = owner
+    name = name
+    deadline = deadline
+    threshold = threshold
+    contributors = Map.empty
+    requested = []
+
+sendRequests: Party -> (ContractId CFProject) -> [Party] 
+  -> Script (ContractId CFProject, [ContractId ContributionRequest])
+sendRequests owner projectId = submit owner . exerciseCmd projectId . SendRequests
+
+setup : Script ()
+setup = script do
+
+  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
+  judith <- allocatePartyWithHint "Judith" (PartyIdHint "Judith")
+
+  aliceId <- validateUserId "alice"
+  bobId <- validateUserId "bob"
+  judithId <- validateUserId "judith"
+
+  createUser (User aliceId (Some alice)) [CanActAs alice]
+  createUser (User bobId (Some bob)) [CanActAs bob]
+  createUser (User judithId (Some judith)) [CanActAs judith]
+
+  deadline <- (`addDays` 30) . toDateUTC <$> getTime
+
+  aliceProjId <- createProject alice "AliceProject" deadline 100_000
+  bobProjId <- createProject bob "BobProject" deadline 200_000
+
+  (_,aliceReqIds) <- sendRequests alice aliceProjId [bob,judith]
+  (_,bobReqIds) <- sendRequests bob bobProjId [judith]
+
+  judithRequests <- query @ContributionRequest judith
+
+  forA_ (fst <$> judithRequests) $ \pid -> submit judith $ exerciseCmd pid $ Accept 150_000 
+  submit bob $ exerciseCmd (head aliceReqIds) Reject
+
+  Some (aliceProjId,_) <- queryContractKey @CFProject alice (alice, "AliceProject")
+  Some (bobProjId,_) <- queryContractKey @CFProject bob (bob, "BobProject")
+
+  passTime $ days 40
+  submit alice $ exerciseCmd aliceProjId $ Launch
+  submit bob $ exerciseCmd bobProjId $ Launch
+
+  return ()

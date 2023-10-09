@@ -1,0 +1,144 @@
+module Crowdfunding where
+
+import DA.Map as Map
+import DA.Set as Set
+import DA.Time (time)
+import DA.Optional (fromOptional)
+import qualified DA.List as List
+
+type CFProjectKey = (Party, Text)
+type ContributionRequestKey = (Party, Party, Text)
+
+-- This represent a project to be funded
+template CFProject
+    with
+        -- Owner (creator) of the project
+        owner: Party
+        -- Name of the project
+        name: Text
+        -- Deadline until contributors can contribute
+        deadline: Date
+        -- Minimum amount to launch the project
+        threshold: Int
+        -- List of confirmed contributors
+        contributors: Map Party Int
+        -- Parties that have been contacted to fund this project
+        requested: [Party]
+
+    where
+        signatory owner
+        observer Set.fromList $ owner :: (fst <$> Map.toList contributors) <> requested 
+
+        key (owner,name): CFProjectKey
+        maintainer key._1
+
+        ensure name /= ""
+
+        -- This issues a contribution to the project. An initial contribution will require to receive a request
+        -- after which it can be called at will to increase the contributed amount.
+        choice Contribute: ContractId CFProject
+            with
+                contributor: Party
+                amount: Int
+            controller contributor
+            do
+                currentTime <- getTime
+                assertMsg "Contributions must be strictly positive" $ amount > 0
+                assertMsg "Contributions must be done before the deadline" $ currentTime <= time deadline 23 59 59
+                assertMsg "This contribution was not requested" $ contributor `elem` requested
+
+                create this with
+                    contributors = Map.alter (Some . (+amount) . (fromOptional 0)) contributor contributors
+
+        -- This lanches a project, giving coupons to contributors
+        choice Launch: [ContractId Coupon]
+            controller owner
+            do
+                currentTime <- getTime
+                assertMsg "Launching the project can only be done after the deadline" $ currentTime > time deadline 23 59 59
+
+                let participations = Map.toList contributors
+                    thresholdReached = List.foldl (\x -> (x +) . snd) 0 participations >= threshold
+
+                forA participations $ \(partName, part) -> create Coupon with 
+                    contributor = partName
+                    projectKey = (owner, name)
+                    amount = part
+                    success = thresholdReached
+
+        -- This creates contribution requests for the input list of parties
+        choice SendRequests: (ContractId CFProject, [ContractId ContributionRequest])
+            with 
+                parties: [Party]
+            controller owner
+            do
+                currentTime <- getTime
+
+                assertMsg "Requests should be sent to separate peers." $ length parties == Set.size (Set.fromList parties)
+                assertMsg "Contributors should not receive new requests" $ all (`notElem` requested) (fst <$> Map.toList contributors)
+                assertMsg "Sending requests must be done before the deadline" $ currentTime <= time deadline 23 59 59
+                assertMsg "You must send requests to at least 1 party." $ not $ Prelude.null parties
+
+                projectCid <- create this with
+                    requested = requested <> parties
+
+                requestsCids <- forA parties $ \part -> 
+                    create ContributionRequest with 
+                        projectKey = (owner,name)
+                        target = part
+
+                return (projectCid, requestsCids)
+
+
+-- This represents a coupon of participation in a project
+template Coupon
+    with 
+        -- Owner of the coupon
+        contributor: Party
+        -- Project that was funded
+        projectKey: CFProjectKey
+        -- Amount of the participation
+        amount: Int
+        -- Whether the project was successfully funded
+        success: Bool
+
+    where
+        signatory projectKey._1
+
+        ensure projectKey._2 /= ""
+
+        choice Redeem: ()
+            controller contributor
+            do return ()
+
+-- This represents a request by a project owner to a potential contributor
+template ContributionRequest 
+    with
+        -- Project that sent this contribution request
+        projectKey: CFProjectKey
+        -- The peer that was asked to fund the project
+        target: Party
+
+    where 
+        signatory projectKey._1
+        observer target, projectKey._1
+
+        key (target, projectKey._1, projectKey._2): ContributionRequestKey
+        maintainer key._2
+
+        -- The party accepts to fund the project with a certain amount
+        choice Accept: ContractId CFProject
+            with
+                amount: Int
+            controller target
+            do 
+                refProject <- lookupByKey @CFProject projectKey
+                case refProject of
+                    None -> abort "This contribution request refers to a non-existing project."
+                    Some projectId -> do
+                        exercise projectId $ Contribute target amount
+
+        choice Reject: ()
+            controller target
+            do
+                return ()
