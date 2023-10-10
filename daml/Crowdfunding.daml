@@ -27,12 +27,26 @@ template CFProject
 
     where
         signatory owner
-        observer Set.fromList $ owner :: (fst <$> Map.toList contributors) <> requested 
+        observer Set.fromList $ (fst <$> Map.toList contributors) <> requested 
 
         key (owner,name): CFProjectKey
         maintainer key._1
 
         ensure name /= ""
+
+        -- Checks for the current status of sent requests:
+        -- If the request still exists, returns its ID
+        -- If the request no longer exists, returns True if it was accepted, false otherwise
+        nonconsuming choice LiveRequests: [(Party, Either Bool (ContractId ContributionRequest))]
+            controller owner
+            do
+                forA requested $ \party -> do
+                    let lookupKey = (party, owner, name)
+                    exists <- visibleByKey @ContributionRequest lookupKey
+                    (party,) <$> (if exists then 
+                        Right . fst <$> fetchByKey @ContributionRequest lookupKey
+                    else 
+                        return $ Left $ party `Map.member` contributors)
 
         -- This issues a contribution to the project. An initial contribution will require to receive a request
         -- after which it can be called at will to increase the contributed amount.

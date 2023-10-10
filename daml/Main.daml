@@ -18,11 +18,9 @@ createProject owner name deadline threshold =
     contributors = Map.empty
     requested = []
 
-sendRequests: Party -> (ContractId CFProject) -> [Party] 
-  -> Script (ContractId CFProject, [ContractId ContributionRequest])
+sendRequests: Party -> (ContractId CFProject) -> [Party] -> Script (ContractId CFProject, [ContractId ContributionRequest])
 sendRequests owner projectId = submit owner . exerciseCmd projectId . SendRequests
 
-setup : Script ()
 setup = script do
 
   alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
@@ -43,18 +41,19 @@ setup = script do
   bobProjId <- createProject bob "BobProject" deadline 200_000
 
   (_,aliceReqIds) <- sendRequests alice aliceProjId [bob,judith]
-  (_,bobReqIds) <- sendRequests bob bobProjId [judith]
+  (bobProjId,bobReqIds) <- sendRequests bob bobProjId [judith]
+
+  liveRequests <- submit bob $ exerciseCmd bobProjId LiveRequests
+  debug $ length liveRequests
 
   judithRequests <- query @ContributionRequest judith
 
-  forA_ (fst <$> judithRequests) $ \pid -> submit judith $ exerciseCmd pid $ Accept 150_000 
+  forA_ (fst <$> judithRequests) $ submit judith . flip exerciseCmd (Accept 150_000)
   submit bob $ exerciseCmd (head aliceReqIds) Reject
 
   Some (aliceProjId,_) <- queryContractKey @CFProject alice (alice, "AliceProject")
   Some (bobProjId,_) <- queryContractKey @CFProject bob (bob, "BobProject")
 
   passTime $ days 40
-  submit alice $ exerciseCmd aliceProjId $ Launch
-  submit bob $ exerciseCmd bobProjId $ Launch
-
-  return ()
+  submit alice $ exerciseCmd aliceProjId Launch
+  submit bob $ exerciseCmd bobProjId LiveRequests
