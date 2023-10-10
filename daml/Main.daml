@@ -7,6 +7,7 @@ import DA.Date (addDays, toDateUTC)
 import DA.Foldable (forA_)
 import DA.List (head)
 import DA.Time (days)
+import Data
 
 createProject: Party -> Text -> Date -> Int -> Script (ContractId CFProject)
 createProject owner name deadline threshold = 
@@ -51,8 +52,13 @@ setup = script do
   forA_ (fst <$> judithRequests) $ submit judith . flip exerciseCmd (Accept 150_000)
   submit bob $ exerciseCmd (head aliceReqIds) Reject
 
-  Some (aliceProjId,_) <- queryContractKey @CFProject alice (alice, "AliceProject")
-  Some (bobProjId,_) <- queryContractKey @CFProject bob (bob, "BobProject")
+  Some (aliceProjId,_) <- queryContractKey @CFProject alice ProjectKey with 
+    owner=alice
+    name="AliceProject"
+
+  Some (bobProjId,_) <- queryContractKey @CFProject bob ProjectKey with
+    owner=bob
+    name="BobProject"
 
   passTime $ days 40
   submit alice $ exerciseCmd aliceProjId Launch

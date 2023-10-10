@@ -4,10 +4,8 @@ import DA.Map as Map
 import DA.Set as Set
 import DA.Time (time)
 import DA.Optional (fromOptional)
-import qualified DA.List as List
-
-type CFProjectKey = (Party, Text)
-type ContributionRequestKey = (Party, Party, Text)
+import DA.List qualified as List
+import Data
 
 -- This represent a project to be funded
 template CFProject
@@ -26,27 +24,42 @@ template CFProject
         requested: [Party]
 
     where
+        -- The owner only can create or archive this project
         signatory owner
+        -- All contributors can observe this contract, alongside parties that were requested to contribute
         observer Set.fromList $ (fst <$> Map.toList contributors) <> requested 
-
-        key (owner,name): CFProjectKey
-        maintainer key._1
-
+        -- The key is the one of the project
+        key ProjectKey{owner,name}: ProjectKey
+        -- The owner of the project is the reference for key unicity
+        maintainer key.owner
+        -- Let's not have projects with empty names
         ensure name /= ""
 
         -- Checks for the current status of sent requests:
         -- If the request still exists, returns its ID
-        -- If the request no longer exists, returns True if it was accepted, false otherwise
+        -- If the request no longer exists, returns True if it was accepted, False otherwise
+        -- This choice is non consuming as it is purely a request
         nonconsuming choice LiveRequests: [(Party, Either Bool (ContractId ContributionRequest))]
             controller owner
             do
-                forA requested $ \party -> do
-                    let lookupKey = (party, owner, name)
+                forA requested $ \target -> (target,) <$> do
+                    let project = ProjectKey{owner,name}
+                        lookupKey = ContributionRequestKey{target,project}
                     exists <- visibleByKey @ContributionRequest lookupKey
-                    (party,) <$> (if exists then 
+                    if exists then 
                         Right . fst <$> fetchByKey @ContributionRequest lookupKey
                     else 
-                        return $ Left $ party `Map.member` contributors)
+                        return $ Left $ target `Map.member` contributors
+
+        -- Checks for the current status of the project
+        -- If the deadline is not yet reached, returns "InProgress"
+        -- Otherwise, returns "Funded" or "Cancelled" depending on the threshold being reached
+        nonconsuming choice GetCurrentStatus: ProjectStatus
+            controller owner
+            do
+                currentTime <- getTime
+                return $ if currentTime <= time deadline 23 59 59 then InProgress else
+                    if List.foldl (\x -> (x +) . snd) 0 (Map.toList contributors) >= threshold then Funded else NotFunded
 
         -- This issues a contribution to the project. An initial contribution will require to receive a request
         -- after which it can be called at will to increase the contributed amount.
@@ -65,20 +78,19 @@ template CFProject
                     contributors = Map.alter (Some . (+amount) . (fromOptional 0)) contributor contributors
 
         -- This lanches a project, giving coupons to contributors
-        choice Launch: [ContractId Coupon]
+        -- This is postconsuming, because we need to exercise "GetCurrentStatus" 
+        -- before actually archiving the contract.
+        postconsuming choice Launch: [ContractId Coupon]
             controller owner
             do
-                currentTime <- getTime
-                assertMsg "Launching the project can only be done after the deadline" $ currentTime > time deadline 23 59 59
+                currentStatus <- exercise self GetCurrentStatus
+                assertMsg "Launching the project can only be done after the deadline" $ currentStatus /= InProgress
 
-                let participations = Map.toList contributors
-                    thresholdReached = List.foldl (\x -> (x +) . snd) 0 participations >= threshold
+                let success = currentStatus == Funded
+                    projectKey = ProjectKey{owner, name}
 
-                forA participations $ \(partName, part) -> create Coupon with 
-                    contributor = partName
-                    projectKey = (owner, name)
-                    amount = part
-                    success = thresholdReached
+                forA (Map.toList contributors) $ \(contributor, amount) -> 
+                    create Coupon{contributor, projectKey, amount, success}
 
         -- This creates contribution requests for the input list of parties
         choice SendRequests: (ContractId CFProject, [ContractId ContributionRequest])
@@ -96,13 +108,12 @@ template CFProject
                 projectCid <- create this with
                     requested = requested <> parties
 
-                requestsCids <- forA parties $ \part -> 
-                    create ContributionRequest with 
-                        projectKey = (owner,name)
-                        target = part
+                let projectKey = ProjectKey{owner,name}
+
+                requestsCids <- forA parties $ \target -> 
+                    create ContributionRequest{projectKey,target}
 
                 return (projectCid, requestsCids)
-
 
 -- This represents a coupon of participation in a project
 template Coupon
@@ -110,16 +121,15 @@ template Coupon
         -- Owner of the coupon
         contributor: Party
         -- Project that was funded
-        projectKey: CFProjectKey
+        projectKey: ProjectKey
         -- Amount of the participation
         amount: Int
         -- Whether the project was successfully funded
         success: Bool
 
     where
-        signatory projectKey._1
-
-        ensure projectKey._2 /= ""
+        signatory projectKey.owner
+        ensure projectKey.name /= ""
 
         choice Redeem: ()
             controller contributor
@@ -129,16 +139,16 @@ template Coupon
 template ContributionRequest 
     with
         -- Project that sent this contribution request
-        projectKey: CFProjectKey
+        projectKey: ProjectKey
         -- The peer that was asked to fund the project
         target: Party
 
     where 
-        signatory projectKey._1
-        observer target, projectKey._1
+        signatory projectKey.owner
+        observer target, projectKey.owner
 
-        key (target, projectKey._1, projectKey._2): ContributionRequestKey
-        maintainer key._2
+        key ContributionRequestKey{target, project=projectKey}: ContributionRequestKey
+        maintainer key.project.owner
 
         -- The party accepts to fund the project with a certain amount
         choice Accept: ContractId CFProject

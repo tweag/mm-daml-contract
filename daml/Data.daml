@@ -1,0 +1,26 @@
+module Data where
+
+class HasOwner i where
+    getOwner: i -> Party
+
+data ProjectKey = ProjectKey with
+    owner: Party
+    name: Text
+        deriving (Show, Eq)
+
+instance HasOwner ProjectKey where
+    getOwner = owner
+
+data ContributionRequestKey = ContributionRequestKey with 
+    target: Party
+    project: ProjectKey
+        deriving (Show, Eq)
+
+instance HasOwner ContributionRequestKey where
+    getOwner = getOwner . project
+
+data ProjectStatus = 
+    InProgress
+    | Funded
+    | NotFunded
+        deriving (Show, Eq)
