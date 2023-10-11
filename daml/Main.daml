@@ -6,13 +6,11 @@ import DA.Date (addDays, toDateUTC)
 import DA.Time (days)
 import Data
 import Endpoints
+import DA.Foldable (mapA_)
 
-setupUsers = script do
-  forA ["alice","bob","judith","jacob"] initializeUser
-
-typical = script do 
+typical = do 
   -- 0. Initializing users
-  [alice,bob,judith,jacob] <- setupUsers
+  [alice,bob,judith,jacob] <- forA ["alice","bob","judith","jacob"] initializeUser
   -- 1. Alice creates a CFProject named AliceProject with a deadline in 10 days and a threshold of 1000.
   aliceProjId <- createProject alice "AliceProject" 1000 =<< ((`addDays` 10) . toDateUTC <$> getTime)
   -- 2. Alice contributes herself to the project for 400.
@@ -34,9 +32,9 @@ typical = script do
   -- 10. The 3 contributors redeem their coupons.
   forA coupons $ uncurry redeemCoupon
 
-twoProjects = script do
+twoProjects = do
   -- 0. Initializing users
-  [alice,bob,judith,_] <- setupUsers
+  [alice,bob,judith] <- forA ["alice","bob","judith"] initializeUser
   -- 1. Configuring a deadline in 30 days
   deadline <- (`addDays` 30) . toDateUTC <$> getTime
   -- 2. Bob and Alice both create their projects
@@ -60,4 +58,60 @@ twoProjects = script do
   -- 10. Bob launches his project, although not fully funded
   launchProject bob bobProjId
   -- 11. Judith looks for her coupons, and redeems the ones that are a unsuccessful
-  mapA (redeemCoupon judith) . (fst <$>) =<< queryFilter @Coupon judith (not . success)
+  mapA_ (redeemCoupon judith) . (fst <$>) =<< queryFilter @Coupon judith (not . success)
+
+wrongArchiveAttempt = do
+  -- 0. Initializing users
+  [alice,bob] <- forA ["alice","bob"] initializeUser
+  -- 1. Alice creates her project
+  aliceProjId <- createProject alice "AliceProject" 100_000 =<< (`addDays` 30) . toDateUTC <$> getTime    
+  -- 2. Alice sends a contribution request to bob
+  (_,[aliceToBobReqId]) <- sendRequests alice aliceProjId [bob]
+  -- 3. Bob accepts and contributes 
+  aliceProjId <- acceptRequest bob 50_000 aliceToBobReqId
+  -- 4. Parties wait for the deadline to be reached
+  passTime (days 40)
+  -- 5. Alice attempts to archive the project without giving a coupon to bob
+  submitMustFail alice $ archiveCmd aliceProjId
+
+spamAttempt = do
+  -- 0. Initializing users
+  [alice,bob] <- forA ["alice","bob"] initializeUser  
+  -- 1. Alice creates her project
+  aliceProjId <- createProject alice "AliceProject" 100_000 =<< (`addDays` 30) . toDateUTC <$> getTime 
+  -- 2. Alice sends a contribution request to bob
+  (aliceProjId,[aliceToBobReqId]) <- sendRequests alice aliceProjId [bob]  
+  -- 3. Bob refuses the request
+  aliceProjId <- rejectRequest bob aliceToBobReqId
+  -- 4. Alice attempts to spam bob with yet another request
+  submitMustFail alice $ exerciseCmd aliceProjId $ SendRequests [bob]
+
+negativeContribution = do
+  -- 0. Initializing users
+  [alice,bob] <- forA ["alice","bob"] initializeUser  
+  -- 1. Alice creates her project
+  aliceProjId <- createProject alice "AliceProject" 100_000 =<< (`addDays` 30) . toDateUTC <$> getTime 
+  -- 2. Alice sends a contribution request to bob
+  (aliceProjId,[aliceToBobReqId]) <- sendRequests alice aliceProjId [bob]     
+  -- 3. Bob accepts the request
+  aliceProjId <- acceptRequest bob 50_000 aliceToBobReqId
+  -- 4. Bob decides that he can contribute even more
+  aliceProjId <- contributeToProject bob aliceProjId 50_000
+  -- 5. Bob regrets and attempt to reduce his contribution
+  submitMustFail bob $ exerciseCmd aliceProjId $ Contribute bob (-50_000)
+
+wrongRedeemingParty = do
+  -- 0. Initializing users
+  [alice,bob] <- forA ["alice","bob"] initializeUser
+  -- 1. Alice creates her project
+  aliceProjId <- createProject alice "AliceProject" 100_000 =<< (`addDays` 30) . toDateUTC <$> getTime    
+  -- 2. Alice sends a contribution request to bob
+  (_,[aliceToBobReqId]) <- sendRequests alice aliceProjId [bob]
+  -- 3. Bob accepts and contributes 
+  aliceProjId <- acceptRequest bob 50_000 aliceToBobReqId
+  -- 4. Parties wait for the deadline to be reached
+  passTime (days 40)
+  -- 5. Alice launches her project
+  [(_,bobCouponId)] <- launchProject alice aliceProjId
+  -- 6. Alice attempts to redeem bob's coupon
+  submitMustFail alice $ exerciseCmd bobCouponId Redeem

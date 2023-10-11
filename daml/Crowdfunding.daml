@@ -133,7 +133,7 @@ template CFProject
                 currentTime <- getTime
 
                 assertMsg "Requests should be sent to separate peers." $ length parties == Set.size (Set.fromList parties)
-                assertMsg "Contributors should not receive new requests" $ all (`notElem` parties) (fst <$> Map.toList contributors)
+                assertMsg "Contributors and requested parties should not receive new requests" $ all (`notElem` parties) ((fst <$> Map.toList contributors) <> requested)
                 assertMsg "Sending requests must be done before the deadline" $ currentTime <= time deadline 23 59 59
                 assertMsg "You must send requests to at least 1 party." $ not $ Prelude.null parties
 
