@@ -7,6 +7,13 @@ import DA.Time (days)
 import Data
 import Endpoints
 import DA.Foldable (mapA_)
+import DA.Functor (void)
+
+setupUsers = do
+  -- 0. Initializing users
+  (alice :: _) <- forA ["alice","bob","judith","jacob"] initializeUser
+  -- 1. Alice creates a CFProject named AliceProject with a deadline in 10 days and a threshold of 1000.
+  void $ createProject alice "AliceProject" 1000 =<< ((`addDays` 10) . toDateUTC <$> getTime)  
 
 typical = do 
   -- 0. Initializing users

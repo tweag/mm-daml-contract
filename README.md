@@ -82,3 +82,6 @@ To initialize some users and play with the contracts in _Navigator_, use
 ```
 $ daml start
 ```
+You can then either:
+- log in as Alice to start exercising choices.
+- create `CFProject` instances as any user.
