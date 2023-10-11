@@ -1,0 +1,15 @@
+module Utils where
+
+-- "If" where the condition is the result of an Action
+ifA: Action a => a Bool -> a x -> a x -> a x
+ifA cond left right = do
+    cond' <- cond
+    if cond' then left else right
+
+-- Haskell's "maybe" with the Optional resulting of an Action
+-- Some parameters are flipped to make it more nature in an Action context
+optionalA: Action a => a (Optional b) -> a x -> (b -> a x) -> a x
+optionalA opt defaultVal fun = do
+    opt' <- opt
+    optional defaultVal fun opt'
+

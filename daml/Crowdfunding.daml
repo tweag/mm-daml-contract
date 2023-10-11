@@ -6,6 +6,7 @@ import DA.Time (time)
 import DA.Optional (fromOptional)
 import DA.List qualified as List
 import Data
+import Utils
 
 -- This represent a project to be funded
 template CFProject
@@ -27,7 +28,8 @@ template CFProject
         -- The owner only can create or archive this project
         signatory owner
         -- All contributors can observe this contract, alongside parties that were requested to contribute
-        observer Set.fromList $ (fst <$> Map.toList contributors) <> requested 
+        -- This might (and will) contain duplicates, but I assume observers are just querried for membership
+        observer (fst <$> Map.toList contributors) <> requested 
         -- The key is the one of the project
         key ProjectKey{owner,name}: ProjectKey
         -- The owner of the project is the reference for key unicity
@@ -42,14 +44,14 @@ template CFProject
         nonconsuming choice LiveRequests: [(Party, Either Bool (ContractId ContributionRequest))]
             controller owner
             do
-                forA requested $ \target -> (target,) <$> do
+                forA requested $ \target -> 
                     let project = ProjectKey{owner,name}
                         lookupKey = ContributionRequestKey{target,project}
-                    exists <- visibleByKey @ContributionRequest lookupKey
-                    if exists then 
-                        Right . fst <$> fetchByKey @ContributionRequest lookupKey
-                    else 
-                        return $ Left $ target `Map.member` contributors
+                    in (target,) <$> 
+                        (ifA 
+                            (visibleByKey @ContributionRequest lookupKey)
+                            (Right . fst <$> fetchByKey @ContributionRequest lookupKey)
+                            (return $ Left $ target `Map.member` contributors))
 
         -- Checks for the current status of the project
         -- If the deadline is not yet reached, returns "InProgress"
@@ -151,16 +153,16 @@ template ContributionRequest
         maintainer key.project.owner
 
         -- The party accepts to fund the project with a certain amount
+        -- This require the project to still exist, otherwise an error is thrown
         choice Accept: ContractId CFProject
             with
                 amount: Int
             controller target
             do 
-                refProject <- lookupByKey @CFProject projectKey
-                case refProject of
-                    None -> abort "This contribution request refers to a non-existing project."
-                    Some projectId -> do
-                        exercise projectId $ Contribute target amount
+                optionalA
+                    (lookupByKey @CFProject projectKey)
+                    (abort "This contribution request refers to a non-existing project.")
+                    (`exercise` (Contribute target amount))
 
         choice Reject: ()
             controller target
