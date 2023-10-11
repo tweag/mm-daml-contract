@@ -11,7 +11,8 @@ This project contains 4 modules:
     1. Utils proposes utility functions around _Action_.
     2. Data provides various data types and type class instances and definitions.
     3. Crowfunding provides the 3 templates described below.
-    4. Main contains test scenarii.
+    4. Endpoints creates wrappers around submitting transactions
+    5. Main contains test scenarii.
 
 ## II. Templates and choices
 

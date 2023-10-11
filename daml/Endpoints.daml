@@ -1,0 +1,48 @@
+module Endpoints where
+
+import Daml.Script
+import Crowdfunding
+import Data
+import DA.Map as Map
+import DA.Text as Text
+
+createProject: Party -> Text -> Int -> Date -> Script (ContractId CFProject)
+createProject owner name threshold deadline = 
+  submit owner $ createCmd CFProject with
+    owner = owner
+    name = name
+    deadline = deadline
+    threshold = threshold
+    contributors = Map.empty
+    requested = [owner]
+
+contributeToProject: Party -> ContractId CFProject -> Int -> Script (ContractId CFProject)
+contributeToProject user projId = submit user . exerciseCmd projId . Contribute user
+
+sendRequests: Party -> (ContractId CFProject) -> [Party] -> Script (ContractId CFProject, [ContractId ContributionRequest])
+sendRequests owner projId = submit owner . exerciseCmd projId . SendRequests
+
+acceptRequest: Party -> Int -> ContractId ContributionRequest -> Script (ContractId CFProject)
+acceptRequest user amount cId = submit user $ exerciseCmd cId $ Respond $ Some amount 
+
+rejectRequest: Party -> ContractId ContributionRequest -> Script (ContractId CFProject)
+rejectRequest user cId = submit user $ exerciseCmd cId $ Respond None
+
+getRequestsStatus: Party -> ContractId CFProject -> Script [(Party, Either Bool (ContractId ContributionRequest))]
+getRequestsStatus user = submit user . (`exerciseCmd` GetRequestsStatus)
+
+getProjectStatus: Party -> ContractId CFProject -> Script ProjectStatus
+getProjectStatus user = submit user . (`exerciseCmd` GetProjectStatus)
+
+launchProject: Party -> ContractId CFProject -> Script [ContractId Coupon]
+launchProject user = submit user . (`exerciseCmd` Launch)
+
+initializeUser: Text -> Script Party
+initializeUser name = do
+    let prefix = Text.asciiToUpper $ Text.take 1 name
+        suffix = Text.drop 1 name
+        upperName = prefix <> suffix
+    user <- allocatePartyWithHint upperName (PartyIdHint upperName)
+    userId <- validateUserId name
+    createUser (User userId (Some user)) [CanActAs user]
+    return user

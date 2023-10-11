@@ -50,13 +50,8 @@ setup = script do
   forA_ (fst <$> judithRequests) $ acceptRequest judith 150_000
   rejectRequest bob aliceBobReqId
 
-  Some (aliceProjId,_) <- queryContractKey @CFProject alice ProjectKey with 
-    owner=alice
-    name="AliceProject"
-
-  Some (bobProjId,_) <- queryContractKey @CFProject bob ProjectKey with
-    owner=bob
-    name="BobProject"
+  Some (aliceProjId,_) <- queryContractKey @CFProject alice $ ProjectKey alice "AliceProject"
+  Some (bobProjId,_) <- queryContractKey @CFProject bob $ ProjectKey bob "BobProject"
 
   passTime $ days 40
   submit alice $ exerciseCmd aliceProjId Launch
