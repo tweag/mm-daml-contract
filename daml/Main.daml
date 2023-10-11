@@ -32,6 +32,20 @@ typical = do
   -- 10. The 3 contributors redeem their coupons.
   forA coupons $ uncurry redeemCoupon
 
+simple = do
+  -- 0. Initializing users
+  alice <- initializeUser "alice"
+  -- 1. Alice creates a project
+  aliceProjId <- createProject alice "AliceProject" 1000 =<< ((`addDays` 1) . toDateUTC <$> getTime)
+  -- 2. She funds her own project totally
+  aliceProjId <- contributeToProject alice aliceProjId 1000
+  -- 3. She waits for time to pass
+  passTime (days 2)
+  -- 4. She launches her project
+  [(_,aliceCouponId)] <- launchProject alice aliceProjId
+  -- 5. She redeems her coupon
+  redeemCoupon alice aliceCouponId
+
 twoProjects = do
   -- 0. Initializing users
   [alice,bob,judith] <- forA ["alice","bob","judith"] initializeUser
