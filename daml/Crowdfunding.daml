@@ -33,7 +33,7 @@ template CFProject
         -- The key is the one of the project
         key ProjectKey{owner,name}: ProjectKey
         -- The owner of the project is the reference for key unicity
-        maintainer key.owner
+        maintainer (getOwner key)
         -- Let's not have projects with empty names
         ensure name /= ""
 
@@ -55,7 +55,7 @@ template CFProject
 
         -- Checks for the current status of the project
         -- If the deadline is not yet reached, returns "InProgress"
-        -- Otherwise, returns "Funded" or "Cancelled" depending on the threshold being reached
+        -- Otherwise, returns "Funded" or "NotFunded" depending on the threshold being reached
         nonconsuming choice GetCurrentStatus: ProjectStatus
             controller owner
             do
@@ -89,10 +89,10 @@ template CFProject
                 assertMsg "Launching the project can only be done after the deadline" $ currentStatus /= InProgress
 
                 let success = currentStatus == Funded
-                    projectKey = ProjectKey{owner, name}
+                    project = ProjectKey{owner, name}
 
                 forA (Map.toList contributors) $ \(contributor, amount) -> 
-                    create Coupon{contributor, projectKey, amount, success}
+                    create Coupon{contributor, project, amount, success}
 
         -- This creates contribution requests for the input list of parties
         choice SendRequests: (ContractId CFProject, [ContractId ContributionRequest])
@@ -110,10 +110,10 @@ template CFProject
                 projectCid <- create this with
                     requested = requested <> parties
 
-                let projectKey = ProjectKey{owner,name}
+                let project = ProjectKey{owner,name}
 
                 requestsCids <- forA parties $ \target -> 
-                    create ContributionRequest{projectKey,target}
+                    create ContributionRequest{project,target}
 
                 return (projectCid, requestsCids)
 
@@ -123,17 +123,21 @@ template Coupon
         -- Owner of the coupon
         contributor: Party
         -- Project that was funded
-        projectKey: ProjectKey
+        project: ProjectKey
         -- Amount of the participation
         amount: Int
         -- Whether the project was successfully funded
         success: Bool
 
     where
-        signatory projectKey.owner
-        ensure projectKey.name /= ""
+        -- The coupon will be created by the project owner upon project launching
+        signatory getOwner project
 
+        -- For now, redeeming the coupon does nothing. We could imagine creating
+        -- a use case for those, such as having funding platforms on top of projects
+        -- with monthly top 10 contributors getting other kinds of rewards.
         choice Redeem: ()
+            -- The contributor is the one redeeming the coupon
             controller contributor
             do return ()
 
@@ -141,16 +145,16 @@ template Coupon
 template ContributionRequest 
     with
         -- Project that sent this contribution request
-        projectKey: ProjectKey
+        project: ProjectKey
         -- The peer that was asked to fund the project
         target: Party
 
     where 
-        signatory projectKey.owner
-        observer target, projectKey.owner
+        signatory getOwner project
+        observer target, getOwner project
 
-        key ContributionRequestKey{target, project=projectKey}: ContributionRequestKey
-        maintainer key.project.owner
+        key ContributionRequestKey{target, project}: ContributionRequestKey
+        maintainer getOwner key
 
         -- The party accepts to fund the project with a certain amount
         -- This require the project to still exist, otherwise an error is thrown
@@ -160,7 +164,7 @@ template ContributionRequest
             controller target
             do 
                 optionalA
-                    (lookupByKey @CFProject projectKey)
+                    (lookupByKey @CFProject project)
                     (abort "This contribution request refers to a non-existing project.")
                     (`exercise` (Contribute target amount))
 
