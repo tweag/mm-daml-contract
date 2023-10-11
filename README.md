@@ -1,5 +1,5 @@
-# 🛠️ DamlForge 🛠️ 
-Crowdfunding is an application built in daml to allow to collaboratively fund projects.
+# 🛠️ MM Crowd Funding 🛠️ 
+MM Crowd Funding is an application built in daml to allow to collaboratively fund projects.
 
 ## I. Overview 
 
