@@ -1,5 +1,8 @@
 module Endpoints where
 
+-- This module provides wrapper functions around submitting transactions.
+-- Their names should be self explanatory
+
 import Daml.Script
 import Crowdfunding
 import Data

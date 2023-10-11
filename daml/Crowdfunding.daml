@@ -26,8 +26,8 @@ template CFProject
         requested: [Party]
 
     where
-        -- The owner only can create or archive this project
-        signatory owner
+        -- The owner and the contributor need to agree to create and archive this project
+        signatory owner :: (fst <$> Map.toList contributors)
         -- All contributors can observe this contract, alongside parties that were requested to contribute
         -- This might (and will) contain duplicates, but I assume observers are just querried for membership
         observer (fst <$> Map.toList contributors) <> requested 

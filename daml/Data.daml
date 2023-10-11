@@ -1,5 +1,6 @@
--- Some data types
 module Data where
+
+-- This module provides some simple data types
 
 class HasOwner i where
     getOwner: i -> Party

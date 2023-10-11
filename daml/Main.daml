@@ -3,7 +3,6 @@ module Main where
 import Daml.Script
 import Crowdfunding
 import DA.Date (addDays, toDateUTC)
-import DA.Foldable (forA_)
 import DA.Time (days)
 import Data
 import Endpoints
@@ -35,20 +34,30 @@ typical = script do
   -- 10. The 3 contributors redeem their coupons.
   forA coupons $ uncurry redeemCoupon
 
-setup = script do
-  [alice,bob,judith,jacob] <- setupUsers
+twoProjects = script do
+  -- 0. Initializing users
+  [alice,bob,judith,_] <- setupUsers
+  -- 1. Configuring a deadline in 30 days
   deadline <- (`addDays` 30) . toDateUTC <$> getTime
+  -- 2. Bob and Alice both create their projects
   aliceProjId <- createProject alice "AliceProject" 100_000 deadline
   bobProjId <- createProject bob "BobProject" 200_000 deadline
+  -- 3. Bob and Alice both send contribution requests to some parties
   (_,[aliceBobReqId,_]) <- sendRequests alice aliceProjId [bob,judith]
-  (bobProjId,bobReqIds) <- sendRequests bob bobProjId [judith]
-  liveRequests <- submit bob $ exerciseCmd bobProjId GetRequestsStatus
-  debug $ length liveRequests
-  judithRequests <- query @ContributionRequest judith
-  forA_ (fst <$> judithRequests) $ acceptRequest judith 150_000
-  rejectRequest bob aliceBobReqId
-  Some (aliceProjId,_) <- queryContractKey @CFProject alice $ ProjectKey alice "AliceProject"
+  (bobProjId,_) <- sendRequests bob bobProjId [judith]
+  -- 4. Bob wishes to check the current status of his requests
+  debug =<< getRequestsStatus bob bobProjId
+  -- 5. Judith queries all the requests that target her, and accept them
+  mapA (acceptRequest judith 150_000) . (fst <$>) =<< query @ContributionRequest judith
+  -- 6. Bob rejects the only requests he has
+  aliceProjId <- rejectRequest bob aliceBobReqId
+  -- 7. Bob searches for his project, as Judith has the projectId has changed when Judith contributed
   Some (bobProjId,_) <- queryContractKey @CFProject bob $ ProjectKey bob "BobProject"
-  passTime $ days 40
-  submit alice $ exerciseCmd aliceProjId Launch
-  submit bob $ exerciseCmd bobProjId GetRequestsStatus
+  -- 8. Alices waits long enough, then launches her project
+  passTime (days 40) >> launchProject alice aliceProjId
+  -- 9. Bob checks for the current status of his project
+  debug =<< getRequestsStatus bob bobProjId
+  -- 10. Bob launches his project, although not fully funded
+  launchProject bob bobProjId
+  -- 11. Judith looks for her coupons, and redeems the ones that are a unsuccessful
+  mapA (redeemCoupon judith) . (fst <$>) =<< queryFilter @Coupon judith (not . success)
