@@ -4,11 +4,12 @@ import DA.Map as Map
 import DA.Set as Set
 import DA.Time (time)
 import DA.Optional (fromOptional)
-import DA.List qualified as List
 import Data
 import Utils
 
--- This represent a project to be funded
+---------------------------
+-- Projects to be funded --
+---------------------------
 template CFProject
     with
         -- Owner (creator) of the project
@@ -34,13 +35,18 @@ template CFProject
         key ProjectKey{owner,name}: ProjectKey
         -- The owner of the project is the reference for key unicity
         maintainer (getOwner key)
-        -- Let's not have projects with empty names
-        ensure name /= ""
+        -- Let's make sure that:
+        -- - projects don't have empty names
+        -- - threshold is strictly positive
+        ensure name /= "" && threshold > 0
 
-        -- Checks for the current status of sent requests:
-        -- If the request still exists, returns its ID
-        -- If the request no longer exists, returns True if it was accepted, False otherwise
-        -- This choice is non consuming as it is purely a request
+        -- ------------------------------------------------------------------------------------
+        -- Checks for the current status of sent requests. For each request:                 --
+        -- If the request still exists, returns its ID                                       --
+        -- If the request no longer exists, returns True if it was accepted, False otherwise --
+        ---------------------------------------------------------------------------------------
+        -- Non consuming as it is purely a request --
+        ---------------------------------------------
         nonconsuming choice LiveRequests: [(Party, Either Bool (ContractId ContributionRequest))]
             controller owner
             do
@@ -53,22 +59,39 @@ template CFProject
                             (Right . fst <$> fetchByKey @ContributionRequest lookupKey)
                             (return $ Left $ target `Map.member` contributors))
 
-        -- Checks for the current status of the project
-        -- If the deadline is not yet reached, returns "InProgress"
-        -- Otherwise, returns "Funded" or "NotFunded" depending on the threshold being reached
+
+        -------------------------------------------------------------------
+        -- Checks for the current status of the project                  --
+        -- Returns "InProgress" when the deadline is not yet reached     --
+        -- Returns "Funded" when after the dealine and threshold reached --
+        -- Returns "NotFunded" otherwise                                 --
+        -------------------------------------------------------------------
+        -- Non consuming as it is purely a request --
+        ---------------------------------------------
         nonconsuming choice GetCurrentStatus: ProjectStatus
+            -- Only the owner can see the status of the project
             controller owner
             do
                 currentTime <- getTime
-                return $ if currentTime <= time deadline 23 59 59 then InProgress else
-                    if List.foldl (\x -> (x +) . snd) 0 (Map.toList contributors) >= threshold then Funded else NotFunded
+                return $ 
+                    if currentTime <= time deadline 23 59 59 
+                        then InProgress 
+                        else if sum (snd <$> Map.toList contributors) >= threshold 
+                            then Funded 
+                            else NotFunded
 
-        -- This issues a contribution to the project. An initial contribution will require to receive a request
-        -- after which it can be called at will to increase the contributed amount.
+        ------------------------------------------------------------------------------
+        -- Issues a contribution to the project.                                    --
+        -- Initial contributions require the existence of a "ContributionRequest"   --
+        -- after which it can be called at will to increase the contributed amount. --
+        ------------------------------------------------------------------------------
         choice Contribute: ContractId CFProject
             with
+                -- The user that wishes to contribute
                 contributor: Party
+                -- The contribution amount
                 amount: Int
+            -- Any party can theoretically exercise this choice to contribute
             controller contributor
             do
                 currentTime <- getTime
@@ -79,10 +102,14 @@ template CFProject
                 create this with
                     contributors = Map.alter (Some . (+amount) . (fromOptional 0)) contributor contributors
 
-        -- This lanches a project, giving coupons to contributors
-        -- This is postconsuming, because we need to exercise "GetCurrentStatus" 
-        -- before actually archiving the contract.
+        --------------------------------------------------------
+        -- Launches a project, giving coupons to contributors --
+        --------------------------------------------------------
+        -- Postconsuming, as we exercise "GetCurrentStatus" --
+        -- before archiving the contract.                   --
+        ------------------------------------------------------
         postconsuming choice Launch: [ContractId Coupon]
+            -- The owner can launch the project
             controller owner
             do
                 currentStatus <- exercise self GetCurrentStatus
@@ -94,7 +121,9 @@ template CFProject
                 forA (Map.toList contributors) $ \(contributor, amount) -> 
                     create Coupon{contributor, project, amount, success}
 
-        -- This creates contribution requests for the input list of parties
+        -----------------------------------------------------------------
+        -- Creates contribution requests for the input list of parties --
+        -----------------------------------------------------------------
         choice SendRequests: (ContractId CFProject, [ContractId ContributionRequest])
             with 
                 parties: [Party]
@@ -107,17 +136,21 @@ template CFProject
                 assertMsg "Sending requests must be done before the deadline" $ currentTime <= time deadline 23 59 59
                 assertMsg "You must send requests to at least 1 party." $ not $ Prelude.null parties
 
+                -- Creation of an updated version of this with the requests update
                 projectCid <- create this with
                     requested = requested <> parties
 
                 let project = ProjectKey{owner,name}
 
+                -- Creation of the requests for each party
                 requestsCids <- forA parties $ \target -> 
                     create ContributionRequest{project,target}
 
                 return (projectCid, requestsCids)
 
--- This represents a coupon of participation in a project
+------------------------------------------
+-- Coupons of contribution to a project --
+------------------------------------------
 template Coupon
     with 
         -- Owner of the coupon
@@ -133,15 +166,21 @@ template Coupon
         -- The coupon will be created by the project owner upon project launching
         signatory getOwner project
 
-        -- For now, redeeming the coupon does nothing. We could imagine creating
-        -- a use case for those, such as having funding platforms on top of projects
-        -- with monthly top 10 contributors getting other kinds of rewards.
+        ------------------------
+        -- Redeems the coupon --
+        -------------------------------------------------------------------------------
+        -- For now, redeeming the coupon does nothing. We could imagine creating     --
+        -- a use case for those, such as having funding platforms on top of projects --
+        -- with monthly top 10 contributors getting other kinds of rewards.          --
+        -------------------------------------------------------------------------------
         choice Redeem: ()
             -- The contributor is the one redeeming the coupon
             controller contributor
             do return ()
 
--- This represents a request by a project owner to a potential contributor
+----------------------------------------
+-- Contribution requests to prospects --
+----------------------------------------
 template ContributionRequest 
     with
         -- Project that sent this contribution request
@@ -149,18 +188,23 @@ template ContributionRequest
         -- The peer that was asked to fund the project
         target: Party
 
-    where 
+    where
+        -- The project owner creates the contribution request
         signatory getOwner project
-        observer target, getOwner project
-
+        -- The target should see this contract
+        observer target
+        -- The request is depicted by the project and the target
         key ContributionRequestKey{target, project}: ContributionRequestKey
+        -- The owner of the project is the reference point
         maintainer getOwner key
 
-        -- The party accepts to fund the project with a certain amount
-        -- This require the project to still exist, otherwise an error is thrown
+        -------------------------------------------------------
+        -- Accepts to fund the project with a certain amount --
+        -------------------------------------------------------
         choice Accept: ContractId CFProject
             with
                 amount: Int
+            -- The target can accept the request
             controller target
             do 
                 optionalA
@@ -168,7 +212,11 @@ template ContributionRequest
                     (abort "This contribution request refers to a non-existing project.")
                     (`exercise` (Contribute target amount))
 
+        ---------------------------------
+        -- Refuses to fund the project --
+        ---------------------------------
         choice Reject: ()
+            -- The target can reject the request
             controller target
             do
                 return ()
