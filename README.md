@@ -68,7 +68,7 @@ sandbox-options:
 - --static-time
 ```
 But the option is not recognised by the sandbox.
-As a consequence, it is not possible tu exercise the `Launch` choice on a crowdfunded projects in my example using `Navigator` since the deadline will never occur.
+As a consequence, it is not possible tu exercise the `Launch` choice on a crowdfunded projects in my example using _Navigator_ since the deadline will never occur.
 
 ### Permission for exercising `GetProjectStatus`
 
