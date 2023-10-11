@@ -44,7 +44,7 @@ setup = script do
   (_,aliceReqIds) <- sendRequests alice aliceProjId [bob,judith]
   (bobProjId,bobReqIds) <- sendRequests bob bobProjId [judith]
 
-  liveRequests <- submit bob $ exerciseCmd bobProjId LiveRequests
+  liveRequests <- submit bob $ exerciseCmd bobProjId GetRequestsStatus
   debug $ length liveRequests
 
   judithRequests <- query @ContributionRequest judith
@@ -62,4 +62,4 @@ setup = script do
 
   passTime $ days 40
   submit alice $ exerciseCmd aliceProjId Launch
-  submit bob $ exerciseCmd bobProjId LiveRequests
+  submit bob $ exerciseCmd bobProjId GetRequestsStatus

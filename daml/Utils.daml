@@ -1,3 +1,4 @@
+-- Some utility functions
 module Utils where
 
 -- "If" where the condition is the result of an Action

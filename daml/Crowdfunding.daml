@@ -47,7 +47,7 @@ template CFProject
         ---------------------------------------------------------------------------------------
         -- Non consuming as it is purely a request --
         ---------------------------------------------
-        nonconsuming choice LiveRequests: [(Party, Either Bool (ContractId ContributionRequest))]
+        nonconsuming choice GetRequestsStatus: [(Party, Either Bool (ContractId ContributionRequest))]
             controller owner
             do
                 forA requested $ \target -> 
@@ -68,15 +68,16 @@ template CFProject
         -------------------------------------------------------------------
         -- Non consuming as it is purely a request --
         ---------------------------------------------
-        nonconsuming choice GetCurrentStatus: ProjectStatus
+        nonconsuming choice GetProjectStatus: ProjectStatus
             -- Only the owner can see the status of the project
             controller owner
             do
                 currentTime <- getTime
+                let currentAmount = sum (snd <$> Map.toList contributors)
                 return $ 
                     if currentTime <= time deadline 23 59 59 
-                        then InProgress 
-                        else if sum (snd <$> Map.toList contributors) >= threshold 
+                        then InProgress $ intToDecimal currentAmount * 100.00 / intToDecimal threshold
+                        else if currentAmount >= threshold 
                             then Funded 
                             else NotFunded
 
@@ -112,8 +113,8 @@ template CFProject
             -- The owner can launch the project
             controller owner
             do
-                currentStatus <- exercise self GetCurrentStatus
-                assertMsg "Launching the project can only be done after the deadline" $ currentStatus /= InProgress
+                currentStatus <- exercise self GetProjectStatus
+                assertMsg "Launching the project can only be done after the deadline" $ not $ inProgress currentStatus
 
                 let success = currentStatus == Funded
                     project = ProjectKey{owner, name}

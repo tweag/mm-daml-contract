@@ -1,3 +1,4 @@
+-- Some data types
 module Data where
 
 class HasOwner i where
@@ -19,8 +20,11 @@ data ContributionRequestKey = ContributionRequestKey with
 instance HasOwner ContributionRequestKey where
     getOwner = getOwner . project
 
-data ProjectStatus = 
-    InProgress
-    | Funded
-    | NotFunded
+data ProjectStatus = Funded 
+    | NotFunded 
+    | InProgress Decimal -- percentage of completion
         deriving (Show, Eq)
+
+inProgress: ProjectStatus -> Bool
+inProgress (InProgress _) = True
+inProgress _ = False 

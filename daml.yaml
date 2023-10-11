@@ -5,6 +5,10 @@ sdk-version: 2.7.3
 name: CrowdFunding
 source: daml
 init-script: Main:setup
+exposed-modules:
+  - Main
+  - Data
+  - Crowdfunding
 version: 0.0.1
 dependencies:
   - daml-prim
