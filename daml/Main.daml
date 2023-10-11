@@ -22,8 +22,7 @@ createProject owner name deadline threshold =
 sendRequests: Party -> (ContractId CFProject) -> [Party] -> Script (ContractId CFProject, [ContractId ContributionRequest])
 sendRequests owner projectId = submit owner . exerciseCmd projectId . SendRequests
 
-setup = script do
-
+setupUsers = script do
   alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
   bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
   judith <- allocatePartyWithHint "Judith" (PartyIdHint "Judith")
@@ -36,6 +35,11 @@ setup = script do
   createUser (User bobId (Some bob)) [CanActAs bob]
   createUser (User judithId (Some judith)) [CanActAs judith]
 
+  return (alice,bob,judith)
+
+setup = script do
+
+  (alice,bob,judith) <- setupUsers
   deadline <- (`addDays` 30) . toDateUTC <$> getTime
 
   aliceProjId <- createProject alice "AliceProject" deadline 100_000
