@@ -42,14 +42,18 @@ There is a single choice to be exercised here:
 - _Redeem_ to redeem the coupon. It does nothing (other than archiving the contract). This is left for addition use cases.
 
 ## III. Typical workflow
-    1. _Alice_ creates a CFProject named _AliceProject_
-    
-  1. proposer creates a ProjectProposal contract     
-  2. evaluator exercises ProposerAccomplishments to check proposer's past accomplishments and confirm if proposer is ready to take on a new responsibility
-  3. evaluator exercises Reject with a feedback: "Aim to finish it by the end of March"
-  4. proposer exercises Revise with an updated endDate (March 25, 2023)
-  5. evaluator exercises Approve - a Project contract is created
-  6. evaluator exercises Evaluate and decides that it's ready to be published - an Accomplishment contract is created
+
+  1. _Alice_ creates a CFProject named _AliceProject_ with a deadline in 10 days and a threshold of 1000.
+  2. _Alice_ contributes herself to the project for 400.
+  3. _Alice_ sends contribution requests to _Bob_, _Judith_ and _Jacob_.
+  4. _Judith_ is not interested and refuses the proposal.
+  5. _Bob_ accepts and gives 500.
+  6. _Alice_ checks the current status of her requests.
+  7. _Jacob_ accepts and gives 300.
+  8. _Alice_ checks the current status of her project.
+  9. Once the deadline has passed, _Alice_ launches the project. 
+
+This typical workflow is named _typical_ and can be found in _Main.daml_.
 
 ## IV. Challenge(s)
 sandbox-options:

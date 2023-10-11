@@ -2,50 +2,44 @@ module Main where
 
 import Daml.Script
 import Crowdfunding
-import qualified DA.Map as Map
 import DA.Date (addDays, toDateUTC)
 import DA.Foldable (forA_)
-import DA.List (head)
 import DA.Time (days)
 import Data
+import Endpoints
+import DA.Action (void)
 
-createProject: Party -> Text -> Date -> Int -> Script (ContractId CFProject)
-createProject owner name deadline threshold = 
-  submit owner $ createCmd CFProject with
-    owner = owner
-    name = name
-    deadline = deadline
-    threshold = threshold
-    contributors = Map.empty
-    requested = []
-
-sendRequests: Party -> (ContractId CFProject) -> [Party] -> Script (ContractId CFProject, [ContractId ContributionRequest])
-sendRequests owner projectId = submit owner . exerciseCmd projectId . SendRequests
-
-setupUsers = script do
-  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
-  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
-  judith <- allocatePartyWithHint "Judith" (PartyIdHint "Judith")
-
-  aliceId <- validateUserId "alice"
-  bobId <- validateUserId "bob"
-  judithId <- validateUserId "judith"
-
-  createUser (User aliceId (Some alice)) [CanActAs alice]
-  createUser (User bobId (Some bob)) [CanActAs bob]
-  createUser (User judithId (Some judith)) [CanActAs judith]
-
-  return (alice,bob,judith)
+typical = script do 
+  -- 0. Initializing users
+  [alice,bob,judith,jacob] <- forA ["alice","bob","judith","jacob"] initializeUser
+  -- 1. Alice creates a CFProject named AliceProject with a deadline in 10 days and a threshold of 1000.
+  aliceProjId <- createProject alice "AliceProject" 1000 =<< ((`addDays` 10) . toDateUTC <$> getTime)
+  -- 2. Alice contributes herself to the project for 400.
+  aliceProjId <- contributeToProject alice aliceProjId 400
+  -- 3. Alice sends contribution requests to Bob, Judith and Jacob.
+  (aliceProjId, [bobReqId,judithReqId,jacobReqId]) <- sendRequests alice aliceProjId [bob,judith,jacob]
+  -- 4. Judith is not interested and refuses the proposal.
+  aliceProjId <- rejectRequest judith judithReqId
+  -- 5. Bob accepts and gives 500.  
+  aliceProjId <- acceptRequest bob 500 bobReqId
+  -- 6. Alice checks the current status of her requests.
+  debug =<< getRequestsStatus alice aliceProjId
+  -- 7. Jacob accepts and gives 300.
+  aliceProjId <- acceptRequest jacob 300 jacobReqId
+  -- 8. Alice checks the current status of her project.
+  debug =<< getProjectStatus alice aliceProjId
+  -- 9. Once the deadline has passed, Alice launches the project.
+  void $ passTime (days 11) >> launchProject alice aliceProjId
 
 setup = script do
 
-  (alice,bob,judith) <- setupUsers
+  [alice,bob,judith,jacob] <- forA ["alice","bob","judith","jacob"] initializeUser
   deadline <- (`addDays` 30) . toDateUTC <$> getTime
 
-  aliceProjId <- createProject alice "AliceProject" deadline 100_000
-  bobProjId <- createProject bob "BobProject" deadline 200_000
+  aliceProjId <- createProject alice "AliceProject" 100_000 deadline
+  bobProjId <- createProject bob "BobProject" 200_000 deadline
 
-  (_,aliceReqIds) <- sendRequests alice aliceProjId [bob,judith]
+  (_,[aliceBobReqId,_]) <- sendRequests alice aliceProjId [bob,judith]
   (bobProjId,bobReqIds) <- sendRequests bob bobProjId [judith]
 
   liveRequests <- submit bob $ exerciseCmd bobProjId GetRequestsStatus
@@ -53,8 +47,8 @@ setup = script do
 
   judithRequests <- query @ContributionRequest judith
 
-  forA_ (fst <$> judithRequests) $ submit judith . flip exerciseCmd (Accept 150_000)
-  submit bob $ exerciseCmd (head aliceReqIds) Reject
+  forA_ (fst <$> judithRequests) $ acceptRequest judith 150_000
+  rejectRequest bob aliceBobReqId
 
   Some (aliceProjId,_) <- queryContractKey @CFProject alice ProjectKey with 
     owner=alice

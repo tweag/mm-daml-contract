@@ -133,7 +133,7 @@ template CFProject
                 currentTime <- getTime
 
                 assertMsg "Requests should be sent to separate peers." $ length parties == Set.size (Set.fromList parties)
-                assertMsg "Contributors should not receive new requests" $ all (`notElem` requested) (fst <$> Map.toList contributors)
+                assertMsg "Contributors should not receive new requests" $ all (`notElem` parties) (fst <$> Map.toList contributors)
                 assertMsg "Sending requests must be done before the deadline" $ currentTime <= time deadline 23 59 59
                 assertMsg "You must send requests to at least 1 party." $ not $ Prelude.null parties
 
@@ -199,25 +199,19 @@ template ContributionRequest
         -- The owner of the project is the reference point
         maintainer getOwner key
 
-        -------------------------------------------------------
-        -- Accepts to fund the project with a certain amount --
-        -------------------------------------------------------
-        choice Accept: ContractId CFProject
+        ----------------------------------------------------------------------------
+        -- Respond to the request. Provide None to refuse, Some x to contribute x --
+        ----------------------------------------------------------------------------
+        choice Respond: ContractId CFProject
             with
-                amount: Int
-            -- The target can accept the request
+                amount: Optional Int
+            -- The target can respond to the request
             controller target
             do 
                 optionalA
                     (lookupByKey @CFProject project)
                     (abort "This contribution request refers to a non-existing project.")
-                    (`exercise` (Contribute target amount))
-
-        ---------------------------------
-        -- Refuses to fund the project --
-        ---------------------------------
-        choice Reject: ()
-            -- The target can reject the request
-            controller target
-            do
-                return ()
+                    (optional 
+                        return
+                        (\amount' projId -> exercise projId $ Contribute target amount')
+                        amount)
