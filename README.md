@@ -62,9 +62,11 @@ This typical workflow is named _typical_ and can be found in _Main.daml_.
 
 I was unable tu run `daml start` When using `setTime`. 
 I looked up many resources and discussions online, but none of them seemed to work.
-A solution that came up many time was to use
+A solution that came up many times online was to use
+    ```
     sandbox-options:
     - --static-time
+    ```
 But the option is not recognised by the sandbox.
 As a consequence, it is not possible tu exercise the `Launch` choice on a crowdfunded projects in my example using `Navigator` since the deadline will never occur.
 
