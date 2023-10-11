@@ -7,11 +7,13 @@ import DA.Foldable (forA_)
 import DA.Time (days)
 import Data
 import Endpoints
-import DA.Action (void)
+
+setupUsers = script do
+  forA ["alice","bob","judith","jacob"] initializeUser
 
 typical = script do 
   -- 0. Initializing users
-  [alice,bob,judith,jacob] <- forA ["alice","bob","judith","jacob"] initializeUser
+  [alice,bob,judith,jacob] <- setupUsers
   -- 1. Alice creates a CFProject named AliceProject with a deadline in 10 days and a threshold of 1000.
   aliceProjId <- createProject alice "AliceProject" 1000 =<< ((`addDays` 10) . toDateUTC <$> getTime)
   -- 2. Alice contributes herself to the project for 400.
@@ -29,30 +31,24 @@ typical = script do
   -- 8. Alice checks the current status of her project.
   debug =<< getProjectStatus alice aliceProjId
   -- 9. Once the deadline has passed, Alice launches the project.
-  void $ passTime (days 11) >> launchProject alice aliceProjId
+  coupons <- passTime (days 11) >> launchProject alice aliceProjId
+  -- 10. The 3 contributors redeem their coupons.
+  forA coupons $ uncurry redeemCoupon
 
 setup = script do
-
-  [alice,bob,judith,jacob] <- forA ["alice","bob","judith","jacob"] initializeUser
+  [alice,bob,judith,jacob] <- setupUsers
   deadline <- (`addDays` 30) . toDateUTC <$> getTime
-
   aliceProjId <- createProject alice "AliceProject" 100_000 deadline
   bobProjId <- createProject bob "BobProject" 200_000 deadline
-
   (_,[aliceBobReqId,_]) <- sendRequests alice aliceProjId [bob,judith]
   (bobProjId,bobReqIds) <- sendRequests bob bobProjId [judith]
-
   liveRequests <- submit bob $ exerciseCmd bobProjId GetRequestsStatus
   debug $ length liveRequests
-
   judithRequests <- query @ContributionRequest judith
-
   forA_ (fst <$> judithRequests) $ acceptRequest judith 150_000
   rejectRequest bob aliceBobReqId
-
   Some (aliceProjId,_) <- queryContractKey @CFProject alice $ ProjectKey alice "AliceProject"
   Some (bobProjId,_) <- queryContractKey @CFProject bob $ ProjectKey bob "BobProject"
-
   passTime $ days 40
   submit alice $ exerciseCmd aliceProjId Launch
   submit bob $ exerciseCmd bobProjId GetRequestsStatus

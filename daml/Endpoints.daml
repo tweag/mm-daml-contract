@@ -8,13 +8,7 @@ import DA.Text as Text
 
 createProject: Party -> Text -> Int -> Date -> Script (ContractId CFProject)
 createProject owner name threshold deadline = 
-  submit owner $ createCmd CFProject with
-    owner = owner
-    name = name
-    deadline = deadline
-    threshold = threshold
-    contributors = Map.empty
-    requested = [owner]
+  submit owner $ createCmd $ CFProject owner name deadline threshold Map.empty [owner]
 
 contributeToProject: Party -> ContractId CFProject -> Int -> Script (ContractId CFProject)
 contributeToProject user projId = submit user . exerciseCmd projId . Contribute user
@@ -34,8 +28,11 @@ getRequestsStatus user = submit user . (`exerciseCmd` GetRequestsStatus)
 getProjectStatus: Party -> ContractId CFProject -> Script ProjectStatus
 getProjectStatus user = submit user . (`exerciseCmd` GetProjectStatus)
 
-launchProject: Party -> ContractId CFProject -> Script [ContractId Coupon]
+launchProject: Party -> ContractId CFProject -> Script [(Party, ContractId Coupon)]
 launchProject user = submit user . (`exerciseCmd` Launch)
+
+redeemCoupon: Party -> ContractId Coupon -> Script ()
+redeemCoupon user = submit user . (`exerciseCmd` Redeem)
 
 initializeUser: Text -> Script Party
 initializeUser name = do

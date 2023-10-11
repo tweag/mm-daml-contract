@@ -31,9 +31,8 @@ There are several choices that can be exercised here:
 
 This represents a request that has been sent by a project owner to a party.
 
-There are two choices that can be exercised here:
-- _Accept_ allows the target of the request to fund the project with an arbitrary amount.
-- _Reject_ allows the target of the request to ignore the request and not fund the project.
+There is one choice that can be exercised here:
+- _Respond_ allows the target of the request to accept of refuse the request.
 
 ### 3 _Coupon_ contract
 
@@ -52,31 +51,34 @@ There is a single choice to be exercised here:
   6. _Alice_ checks the current status of her requests.
   7. _Jacob_ accepts and gives 300.
   8. _Alice_ checks the current status of her project.
-  9. Once the deadline has passed, _Alice_ launches the project. 
+  9. Once the deadline has passed, _Alice_ launches the project.
+  10. The 3 contributors redeem their coupons.
 
 This typical workflow is named _typical_ and can be found in _Main.daml_.
 
 ## IV. Challenge(s)
-sandbox-options:
-  - --static-time
-* `controller ... can` syntax causes warning in Daml 2.0+. The code itself does not cause any issues/errors in 2.5.0 but according to the warning, the syntax will be deprecated in the future versions of Daml. More information [here](https://docs.daml.com/daml/reference/choices.html#daml-ref-controller-can-deprecation).
-* The new controller syntax requires a controller to be an observer first before they can exercise a choice, otherwise it'll throw an error: "Attempt to fetch or exercise a contract not visible to the committer." For more information, check out [this post](https://discuss.daml.com/t/error-attempt-to-fetch-or-exercise-a-contract-not-visible-to-the-committer/1304/1) on the Daml Forum.
-* The project was created by using `empty-skeleton` and the following was removed from `daml.yaml`:
-```
-sandbox-options:
-   - --wall-clock-time
-```
-and the following was added:
 
-```
-exposed-modules:
-  - Main
-```
-For more info, check out [this post](https://discuss.daml.com/t/sandbox-options-wall-clock-time/5692/16?u=cathy_jung) on Daml Forum and [Daml Doc](https://docs.daml.com/tools/navigator/index.html?&_ga=2.48248804.337210607.1673989679-241632404.1672853064&_gac=1.17025355.1673455980.CjwKCAiA2fmdBhBpEiwA4CcHzfI2w1_D95zAr3_d6QTypOMXGTpUxtS06c55inucNwZvUZn4AebsJxoCZEgQAvD_BwE&_gl=1*elem6v*_ga*MjQxNjMyNDA0LjE2NzI4NTMwNjQ.*_ga_GVK9ZHZSMR*MTY3Mzk5NDQzOS4zMS4xLjE2NzM5OTQ3MDcuMC4wLjA.#logging-in-as-a-party).
+### Unable to play with time in _Navigator_
 
+I was unable tu run `daml start` When using `setTime`. 
+I looked up many resources and discussions online, but none of them seemed to work.
+A solution that came up many time was to use
+    sandbox-options:
+    - --static-time
+But the option is not recognised by the sandbox.
+As a consequence, it is not possible tu exercise the _Launch_ choice on a crowdfunded projects in my example using _Navigator_ since the deadline will never occur.
+
+### Permission for exercising _GetProjectStatus_
+
+I would have wanted everybody among contributors to be able to exercise this choice. However, I did not know how to express as a controller "anyone among those". I believe it is not possible. The closest I could find was to pass the party that exercises the choice as parameter as the choice itself, and ensuring within the body of the choice that this party indeed belongs to contributors or requested contributors. But I eventually settled on only allowing the owner to exercise this choice. I guess that only observers could exercise this choice anyway, thus rendering the previous option more potent, but I did not feel like passing an extra parameter just to set the controller (which I did for contributions). I would be interested to discuss more about these permissions and associated patterns.
 
 ## V. Compiling & Testing
-To compile and test, run the pre-written script in the `Test.daml` under /daml OR run:
+
+To launch the test suite, run
+```
+$ daml test
+```
+To initialize some users and play with the contracts in _Navigator_, use
 ```
 $ daml start
 ```

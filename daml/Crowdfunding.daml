@@ -109,7 +109,7 @@ template CFProject
         -- Postconsuming, as we exercise "GetCurrentStatus" --
         -- before archiving the contract.                   --
         ------------------------------------------------------
-        postconsuming choice Launch: [ContractId Coupon]
+        postconsuming choice Launch: [(Party, ContractId Coupon)]
             -- The owner can launch the project
             controller owner
             do
@@ -120,7 +120,7 @@ template CFProject
                     project = ProjectKey{owner, name}
 
                 forA (Map.toList contributors) $ \(contributor, amount) -> 
-                    create Coupon{contributor, project, amount, success}
+                    (contributor,) <$> create Coupon{contributor, project, amount, success}
 
         -----------------------------------------------------------------
         -- Creates contribution requests for the input list of parties --
@@ -166,6 +166,8 @@ template Coupon
     where
         -- The coupon will be created by the project owner upon project launching
         signatory getOwner project
+        -- The coupon whould be visible by the contributor
+        observer contributor
 
         ------------------------
         -- Redeems the coupon --
